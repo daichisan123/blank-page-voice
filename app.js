@@ -1,8 +1,8 @@
 // Blank Page on the phone: voice notes only. Notes live on the phone
 // (localStorage); recordings wait in IndexedDB until they are transcribed, so
 // one made without signal is never lost. Once Drive is connected (drive.js),
-// every note saves into the Blank Page folder by itself; "Share file" is the
-// manual way, as a .md file the desktop app reads like any other.
+// every note saves into the Blank Page folder by itself. "Copy" puts a note
+// on the clipboard, for pasting into Claude.
 
 const $ = (id) => document.getElementById(id);
 const GROQ = 'https://api.groq.com/openai/v1';
@@ -147,13 +147,12 @@ function renderList() {
     title.textContent = titleOf(note);
     const meta = document.createElement('div');
     meta.className = 'n-meta';
-    const done = Drive.folder() ? note.syncedAt : note.sentAt;
-    const unsent = !done || done < note.updated;
+    const unsent = Drive.folder() && (!note.syncedAt || note.syncedAt < note.updated);
     meta.textContent = when(note.updated);
     if (unsent) {
       const flag = document.createElement('span');
       flag.className = 'n-flag';
-      flag.textContent = Drive.folder() ? ' · not in Drive yet' : ' · not sent yet';
+      flag.textContent = ' · not in Drive yet';
       meta.append(flag);
     }
     li.append(title, meta);
@@ -186,7 +185,7 @@ function closeNote() {
 
 $('new-note').addEventListener('click', () => {
   const now = new Date().toISOString();
-  openNote({ id: newId(), text: '', created: now, updated: now, sentAt: '' });
+  openNote({ id: newId(), text: '', created: now, updated: now });
 });
 $('back').addEventListener('click', () => history.back());
 window.addEventListener('popstate', () => { if (!$('note-view').hidden) closeNote(); });
@@ -358,42 +357,17 @@ async function retryAll() {
 }
 window.addEventListener('online', retryAll);
 
-// --- sending to the desktop app ---------------------------------------------------
+// --- copying, to paste into another app (Claude) -------------------------------------
 
-const slug = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'untitled';
-
-// The same header and file name the desktop app writes, so it reads the note
-// as its own and labels it on the next start.
-function asMarkdown(note) {
-  const { title, body } = Drive.split(note.text);
-  const meta = { id: note.id, title, created: note.created, updated: note.updated };
-  const header = Object.entries(meta).map(([k, v]) => `${k}: ${JSON.stringify(String(v))}`).join('\n');
-  return { name: `${slug(title)}-${note.id}.md`, text: `---\n${header}\n---\n\n${body}\n` };
-}
-
-$('share').addEventListener('click', async () => {
-  if (!current || !current.text.trim()) return;
-  clearTimeout(bodyTimer);
-  current.text = $('body').value;
-  touch(current);
-  const { name, text } = asMarkdown(current);
-  const files = [new File([text], name, { type: 'text/markdown' }), new File([text], name, { type: 'text/plain' })];
-  const file = files.find((f) => navigator.canShare && navigator.canShare({ files: [f] }));
+$('copy').addEventListener('click', async () => {
+  const text = $('body').value.trim();
+  if (!text) return;
   try {
-    if (file) {
-      await navigator.share({ files: [file], title: titleOf(current) });
-    } else {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
-      a.download = name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    }
-    current.sentAt = new Date().toISOString();
-    saveNotes();
-    setStatus('Sent. Save it in Drive → Blank Page.');
+    await navigator.clipboard.writeText(text);
+    setStatus('Copied.');
+    setTimeout(() => { if ($('status').textContent === 'Copied.') setStatus(''); }, 2000);
   } catch (error) {
-    if (error.name !== 'AbortError') setStatus(`Could not share: ${error.message}`, true);
+    setStatus(`Could not copy: ${error.message}`, true);
   }
 });
 
