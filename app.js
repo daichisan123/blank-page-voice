@@ -365,9 +365,7 @@ const slug = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '
 // The same header and file name the desktop app writes, so it reads the note
 // as its own and labels it on the next start.
 function asMarkdown(note) {
-  const lines = note.text.trim().split('\n');
-  const title = lines[0].trim().slice(0, 120);
-  const body = lines.slice(1).join('\n').trim();
+  const { title, body } = Drive.split(note.text);
   const meta = { id: note.id, title, created: note.created, updated: note.updated };
   const header = Object.entries(meta).map(([k, v]) => `${k}: ${JSON.stringify(String(v))}`).join('\n');
   return { name: `${slug(title)}-${note.id}.md`, text: `---\n${header}\n---\n\n${body}\n` };

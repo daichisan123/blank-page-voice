@@ -115,10 +115,13 @@ const Drive = (() => {
   };
   const same = (a, b) => String(a || '').replace(/\r\n/g, '\n').trim() === String(b || '').replace(/\r\n/g, '\n').trim();
 
-  // Title is the first line, the body the rest, as the desktop app stores them.
+  // The whole note is the body; the title is its first few words. Spoken
+  // notes are often one long line, and a title with no body is never labelled.
   function split(text) {
-    const lines = text.trim().split('\n');
-    return { title: lines[0].trim().slice(0, 120), body: lines.slice(1).join('\n').trim() };
+    const body = text.trim();
+    const first = body.split('\n')[0].trim();
+    const cut = first.length > 60 ? `${first.slice(0, 60).replace(/\s+\S*$/, '')}…` : first;
+    return { title: cut, body };
   }
   const slug = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'untitled';
 
@@ -190,5 +193,5 @@ const Drive = (() => {
     }
   }
 
-  return { clientId, folder, signedIn, loadGoogle, signIn, findFolder, sync, waiting };
+  return { clientId, folder, signedIn, loadGoogle, signIn, findFolder, sync, waiting, split };
 })();
