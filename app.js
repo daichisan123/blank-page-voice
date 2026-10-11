@@ -1,7 +1,8 @@
 // Blank Page on the phone: voice notes only. Notes live on the phone
 // (localStorage); recordings wait in IndexedDB until they are transcribed, so
-// one made without signal is never lost. "Send to Drive" shares a note as a
-// .md file the desktop app reads like any other.
+// one made without signal is never lost. Once Drive is connected (drive.js),
+// every note saves into the Blank Page folder by itself; "Share file" is the
+// manual way, as a .md file the desktop app reads like any other.
 
 const $ = (id) => document.getElementById(id);
 const GROQ = 'https://api.groq.com/openai/v1';
@@ -27,7 +28,58 @@ function touch(note) {
   note.updated = new Date().toISOString();
   if (!notes.includes(note)) notes.push(note);
   saveNotes();
+  scheduleSync();
 }
+
+// --- Google Drive (drive.js) --------------------------------------------------
+
+let syncTimer = 0;
+let syncing = false;
+function scheduleSync() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncNow, 3000);
+}
+
+async function syncNow() {
+  if (syncing) return scheduleSync();
+  syncing = true;
+  const result = await Drive.sync(notes, saveNotes).catch((e) => ({ state: 'error', message: e.message }));
+  syncing = false;
+  renderSync(result);
+  if (!$('list-view').hidden) renderList();
+}
+
+// Shows only what needs attention: a tap to sign in again, no signal, or an error.
+function renderSync(result) {
+  for (const box of document.querySelectorAll('.sync')) {
+    box.textContent = '';
+    box.classList.toggle('error', result.state === 'error');
+    box.hidden = result.state === 'off' || result.state === 'done';
+    if (box.hidden) continue;
+    const n = result.count || 0;
+    const notesWord = `${n} note${n === 1 ? '' : 's'}`;
+    const text = document.createElement('span');
+    text.textContent = result.state === 'offline' ? `${notesWord} will go to Drive when you have signal`
+      : result.state === 'waiting' ? `${notesWord} waiting for Drive`
+        : `Drive: ${result.message}`;
+    box.append(text);
+    if (result.state === 'offline') continue;
+    const button = document.createElement('button');
+    button.textContent = result.state === 'waiting' ? 'Sync' : 'Retry';
+    button.addEventListener('click', async () => {
+      try {
+        if (!Drive.signedIn()) await Drive.signIn();
+        await syncNow();
+      } catch (error) {
+        renderSync({ state: 'error', count: n, message: error.message });
+      }
+    });
+    box.append(button);
+  }
+}
+
+window.addEventListener('online', syncNow);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncNow(); });
 
 // --- key ---------------------------------------------------------------------
 
@@ -95,12 +147,13 @@ function renderList() {
     title.textContent = titleOf(note);
     const meta = document.createElement('div');
     meta.className = 'n-meta';
-    const unsent = !note.sentAt || note.sentAt < note.updated;
+    const done = Drive.folder() ? note.syncedAt : note.sentAt;
+    const unsent = !done || done < note.updated;
     meta.textContent = when(note.updated);
     if (unsent) {
       const flag = document.createElement('span');
       flag.className = 'n-flag';
-      flag.textContent = ' · not sent yet';
+      flag.textContent = Drive.folder() ? ' · not in Drive yet' : ' · not sent yet';
       meta.append(flag);
     }
     li.append(title, meta);
@@ -353,8 +406,41 @@ function openSettings() {
   settingsFrom = current ? 'note-view' : 'list-view';
   $('key').value = getKey();
   $('key-status').textContent = getKey() ? 'A key is saved.' : 'Get a free key at console.groq.com → API Keys.';
+  $('client-id').value = Drive.clientId();
+  const f = Drive.folder();
+  $('drive-status').textContent = f ? `Saving to your Drive folder “${f.name}” (${f.count} notes in it when connected).` : '';
+  $('connect').textContent = f ? 'Connect again' : 'Connect Google Drive';
+  if (Drive.clientId()) Drive.loadGoogle().catch(() => {});
   show('settings-view');
 }
+
+// Sign-in only opens straight from a tap, so Google's script loads while the
+// Client ID is typed or pasted, before Connect is pressed.
+$('client-id').addEventListener('input', () => {
+  const id = $('client-id').value.trim();
+  if (!/\.apps\.googleusercontent\.com$/.test(id)) return;
+  localStorage.setItem('driveClientId', id);
+  Drive.loadGoogle().catch(() => {});
+});
+
+$('connect').addEventListener('click', async () => {
+  const id = $('client-id').value.trim();
+  if (!/\.apps\.googleusercontent\.com$/.test(id)) {
+    $('drive-status').textContent = 'That does not look like a Client ID. It ends in .apps.googleusercontent.com.';
+    return;
+  }
+  localStorage.setItem('driveClientId', id);
+  try {
+    await Drive.signIn();
+    $('drive-status').textContent = 'Looking for your Blank Page folder…';
+    const f = await Drive.findFolder();
+    $('drive-status').textContent = `Connected. Saving to your Drive folder “${f.name}” (${f.count} notes in it).`;
+    $('connect').textContent = 'Connect again';
+    syncNow();
+  } catch (error) {
+    $('drive-status').textContent = error.message;
+  }
+});
 $('open-settings').addEventListener('click', openSettings);
 $('settings-back').addEventListener('click', () => show(settingsFrom));
 
@@ -379,3 +465,5 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 renderList();
 show('list-view');
 if (navigator.onLine) retryAll();
+if (Drive.clientId()) Drive.loadGoogle().catch(() => {});
+syncNow();

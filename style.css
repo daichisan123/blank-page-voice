@@ -144,4 +144,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   font: 400 16px/1 var(--ui);
 }
 .settings .primary { margin: 8px 0 0; }
+.settings .gap { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--hair); }
+
+/* Only when something is waiting: "2 notes waiting for Drive · Sync". */
+.sync { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--hair); font-size: 14px; color: var(--ink-soft); }
+.sync.error { color: var(--danger); }
+.sync button { margin-left: auto; padding: 6px 12px; border: 1px solid var(--hair); border-radius: var(--r-md); color: var(--ink); }
 .hint { margin: 0; font-size: 14px; color: var(--muted); }

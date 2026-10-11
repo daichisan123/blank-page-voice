@@ -1,7 +1,7 @@
 // Keeps the page itself on the phone, so it opens without signal. Bump
 // VERSION after changing any file, or phones keep the old copy.
-const VERSION = 'v1';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const VERSION = 'v2';
+const FILES = ['./', 'index.html', 'style.css', 'drive.js', 'app.js','manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
